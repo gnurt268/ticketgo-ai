@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with pgvector for AI service
+  pgvector:
+    image: pgvector/pgvector:pg16
+    container_name: ticketgo-pgvector
+    environment:
+      POSTGRES_USER: ticketgo
+      POSTGRES_PASSWORD: ticketgo123
+      POSTGRES_DB: ticketgo_ai
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgvector_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ticketgo -d ticketgo_ai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # AI Service (Python FastAPI)
+  ai-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ticketgo-ai
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - POSTGRES_HOST=pgvector
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=ticketgo
+      - POSTGRES_PASSWORD=ticketgo123
+      - POSTGRES_DB=ticketgo_ai
+      - MAIN_API_URL=http://host.docker.internal:8080/api
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+      - DEBUG=false
+    ports:
+      - "8000:8000"
+    depends_on:
+      pgvector:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgvector_data:
+
+networks:
+  default:
+    name: ticketgo-network
