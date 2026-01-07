@@ -104,11 +104,13 @@ async def root():
 @app.get("/health", response_model=HealthResponse, tags=["Root"])
 async def health_check():
     """Health check endpoint"""
+    from sqlalchemy import text
+    
     # Check database
     db_status = "healthy"
     try:
         with get_db_context() as db:
-            db.execute("SELECT 1")
+            db.execute(text("SELECT 1"))
     except Exception as e:
         db_status = f"unhealthy: {str(e)}"
     

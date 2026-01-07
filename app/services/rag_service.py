@@ -40,11 +40,12 @@ class RAGService:
         
         Steps:
         1. Get or create session
-        2. Retrieve relevant documents
-        3. Build context
-        4. Generate response
-        5. Save to history
-        6. Generate suggestions
+        2. Detect intent
+        3. Retrieve relevant documents (if needed)
+        4. Build context
+        5. Generate response
+        6. Save to history
+        7. Generate suggestions
         """
         start_time = time.time()
         
@@ -60,22 +61,47 @@ class RAGService:
             )
             logger.info(f"Created new session: {session_id}")
         
-        # 2. Get chat history
+        # 2. Detect intent
+        intent_result = await self.gemini.detect_intent(request.message)
+        intent = intent_result["intent"]
+        logger.info(f"Detected intent: {intent} for message: {request.message[:50]}...")
+        
+        # 3. Get chat history
         history_messages = ChatStore.get_chat_history(db, session_id, limit=6)
         chat_history = [
             {"role": msg.role, "content": msg.content}
             for msg in history_messages
         ]
         
-        # 3. Retrieve relevant documents
-        relevant_docs = await self._retrieve_documents(
-            db, 
-            request.message,
-            limit=5
-        )
+        # 4. Handle based on intent
+        sources = []
+        context = ""
         
-        # 4. Build context from retrieved documents
-        context, sources = self._build_context(relevant_docs)
+        if intent == "ticketgo":
+            # Full RAG pipeline for TicketGo questions
+            relevant_docs = await self._retrieve_documents(
+                db, 
+                request.message,
+                limit=5
+            )
+            context, sources = self._build_context(relevant_docs)
+            
+        elif intent == "greeting":
+            # Simple greeting context
+            context = """Đây là lời chào từ khách hàng. 
+Hãy chào lại thân thiện và giới thiệu bạn là TicketGo Assistant, 
+có thể hỗ trợ về mua vé, tìm sự kiện, thanh toán, check-in và các vấn đề khác."""
+            
+        elif intent == "inappropriate":
+            # Block inappropriate content
+            context = """Đây là nội dung không phù hợp.
+Hãy từ chối lịch sự và nhắc rằng bạn chỉ hỗ trợ về mua vé và sự kiện trên TicketGo."""
+            
+        else:  # general
+            # General questions - answer briefly then redirect
+            context = """Đây là câu hỏi KHÔNG liên quan đến TicketGo.
+Hãy trả lời NGẮN GỌN (1-2 câu) nếu có thể, sau đó HỎI LẠI xem khách cần hỗ trợ gì về mua vé hoặc sự kiện trên TicketGo không.
+KHÔNG trả lời dài dòng, KHÔNG giải bài tập, KHÔNG viết code."""
         
         # 5. Generate response
         answer = await self.gemini.generate_response(
@@ -91,14 +117,23 @@ class RAGService:
             session_id, 
             "assistant", 
             answer,
-            sources=[s.model_dump() for s in sources]
+            sources=[s.model_dump() for s in sources] if sources else None
         )
         
-        # 7. Generate suggested questions
-        suggestions = await self.gemini.generate_suggested_questions(
-            request.message,
-            answer
-        )
+        # 7. Generate suggested questions (only for ticketgo intent)
+        suggestions = []
+        if intent == "ticketgo":
+            suggestions = await self.gemini.generate_suggested_questions(
+                request.message,
+                answer
+            )
+        else:
+            # Default suggestions for non-ticketgo questions
+            suggestions = [
+                "Làm sao để mua vé?",
+                "Có những sự kiện nào đang diễn ra?",
+                "Chính sách hoàn vé như thế nào?"
+            ]
         
         # Calculate processing time
         processing_time = int((time.time() - start_time) * 1000)

@@ -24,25 +24,51 @@ class GeminiService:
         # System prompt for TicketGo chatbot
         self.system_prompt = """Bạn là TicketGo Assistant - trợ lý AI thông minh của nền tảng bán vé sự kiện TicketGo.
 
-NHIỆM VỤ:
-- Hỗ trợ khách hàng tìm kiếm và mua vé sự kiện
-- Trả lời câu hỏi về chính sách, quy trình đặt vé, thanh toán
-- Hướng dẫn sử dụng các tính năng của TicketGo
-- Cung cấp thông tin về sự kiện dựa trên dữ liệu được cung cấp
+## VAI TRÒ CHÍNH:
+- Hỗ trợ khách hàng về mua vé, sự kiện, thanh toán, check-in trên TicketGo
+- Trả lời câu hỏi về chính sách, quy trình của TicketGo
 
-QUY TẮC:
-1. Luôn trả lời bằng tiếng Việt, thân thiện và chuyên nghiệp
-2. Dựa vào CONTEXT được cung cấp để trả lời chính xác
-3. Nếu không có thông tin trong context, hãy nói rõ và đề xuất liên hệ hotline
-4. Không bịa đặt thông tin về giá vé, thời gian, địa điểm
-5. Với câu hỏi về đơn hàng cụ thể, hướng dẫn user đăng nhập để xem
-6. Giữ câu trả lời ngắn gọn, dễ hiểu (tối đa 3-4 đoạn)
+## CÁCH XỬ LÝ CÂU HỎI:
 
-THÔNG TIN LIÊN HỆ:
-- Hotline: 1900-xxxx
+### 1. Câu hỏi LIÊN QUAN đến TicketGo (vé, sự kiện, thanh toán, tài khoản...):
+→ Trả lời đầy đủ, chính xác dựa trên CONTEXT
+
+### 2. Câu hỏi KHÔNG LIÊN QUAN (hỏi về thời tiết, code, toán học, chuyện phiếm...):
+→ Trả lời NGẮN GỌN (1-2 câu) nếu đơn giản
+→ Sau đó LUÔN kết thúc bằng: "Bạn có cần hỗ trợ gì về mua vé hoặc sự kiện trên TicketGo không?"
+→ KHÔNG trả lời dài dòng, KHÔNG giải bài tập, KHÔNG viết code, KHÔNG tư vấn chuyên sâu ngoài lĩnh vực
+
+### 3. Câu hỏi NHẠY CẢM hoặc KHÔNG PHÙ HỢP:
+→ Từ chối lịch sự: "Xin lỗi, tôi không thể hỗ trợ vấn đề này. Tôi chuyên hỗ trợ về mua vé và sự kiện trên TicketGo."
+
+### 4. Chào hỏi, cảm ơn:
+→ Đáp lại thân thiện + giới thiệu có thể hỗ trợ gì
+
+## QUY TẮC QUAN TRỌNG:
+1. Luôn trả lời bằng tiếng Việt, thân thiện, chuyên nghiệp
+2. Dựa vào CONTEXT để trả lời chính xác về TicketGo
+3. KHÔNG bịa đặt thông tin về giá vé, thời gian, địa điểm
+4. KHÔNG trở thành trợ lý AI đa năng - giữ focus vào TicketGo
+5. Câu trả lời ngắn gọn, tối đa 3-4 đoạn
+6. Nếu không có thông tin → đề xuất liên hệ hotline
+
+## THÔNG TIN LIÊN HỆ:
+- Hotline: 1900-xxxx  
 - Email: support@ticketgo.vn
 - Website: https://ticketgo.vn
 
+## VÍ DỤ XỬ LÝ:
+
+User: "Thủ đô của Pháp là gì?"
+Assistant: "Thủ đô của Pháp là Paris. Bạn có cần hỗ trợ gì về mua vé hoặc sự kiện trên TicketGo không?"
+
+User: "Viết code Python cho tôi"
+Assistant: "Xin lỗi, tôi không thể hỗ trợ viết code. Tôi là trợ lý chuyên về mua vé và sự kiện trên TicketGo. Bạn cần hỗ trợ gì về vé không?"
+
+User: "Xin chào"
+Assistant: "Xin chào! 👋 Tôi là TicketGo Assistant, sẵn sàng hỗ trợ bạn về mua vé, tìm sự kiện, thanh toán và các vấn đề khác trên TicketGo. Bạn cần giúp gì ạ?"
+
+---
 Hãy trả lời câu hỏi của khách hàng dựa trên context sau:
 """
     
@@ -171,6 +197,44 @@ Chỉ trả về 3 câu hỏi ngắn gọn, mỗi câu trên 1 dòng, không đ�
         except Exception as e:
             logger.error(f"Error generating suggestions: {e}")
             return []
+    
+    async def detect_intent(self, message: str) -> dict:
+        """
+        Detect user intent to classify the question
+        Returns: {"intent": "ticketgo|general|inappropriate|greeting", "confidence": 0.0-1.0}
+        """
+        try:
+            prompt = f"""Phân loại câu hỏi sau vào 1 trong 4 loại:
+- "ticketgo": Liên quan đến mua vé, sự kiện, thanh toán, tài khoản, check-in, hoàn vé, TicketGo
+- "greeting": Chào hỏi, cảm ơn, tạm biệt
+- "general": Câu hỏi thông thường không liên quan (thời tiết, kiến thức, code, toán...)  
+- "inappropriate": Nội dung không phù hợp, nhạy cảm, vi phạm
+
+Câu hỏi: "{message}"
+
+Chỉ trả lời đúng 1 từ: ticketgo, greeting, general, hoặc inappropriate"""
+
+            response = await self.model.generate_content_async(
+                prompt,
+                generation_config=genai.GenerationConfig(
+                    temperature=0.1,
+                    max_output_tokens=20,
+                )
+            )
+            
+            intent = response.text.strip().lower()
+            
+            # Validate intent
+            valid_intents = ["ticketgo", "greeting", "general", "inappropriate"]
+            if intent not in valid_intents:
+                # Default to general if unclear
+                intent = "general"
+            
+            return {"intent": intent, "confidence": 0.9}
+            
+        except Exception as e:
+            logger.error(f"Intent detection error: {e}")
+            return {"intent": "general", "confidence": 0.5}
     
     async def check_connection(self) -> bool:
         """Check if Gemini API is accessible"""

@@ -40,7 +40,7 @@ class KnowledgeBase(Base):
     title = Column(String(500), nullable=False)
     content = Column(Text, nullable=False)
     category = Column(String(50), nullable=False, index=True)  # faq, policy, guide, event
-    metadata = Column(JSON, nullable=True)
+    extra_metadata = Column(JSON, nullable=True)
     embedding = Column(Vector(VECTOR_DIMENSION), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -143,7 +143,7 @@ class VectorStore:
             content=content,
             category=category,
             embedding=embedding,
-            metadata=metadata or {}
+            extra_metadata=metadata or {}
         )
         db.add(doc)
         db.commit()

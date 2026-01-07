@@ -357,7 +357,7 @@ Trạng thái: {'Đang mở bán' if event.get('status') == 'PUBLISHED' else 'Ch
         # Check if event already indexed
         existing = db.query(KnowledgeBase).filter(
             KnowledgeBase.category == "event",
-            KnowledgeBase.metadata["event_id"].astext == str(event_id)
+            KnowledgeBase.extra_metadata["event_id"].astext == str(event_id)
         ).first()
         
         # Generate embedding
@@ -367,7 +367,7 @@ Trạng thái: {'Đang mở bán' if event.get('status') == 'PUBLISHED' else 'Ch
             # Update existing
             existing.content = content
             existing.embedding = embedding
-            existing.metadata = {"event_id": event_id, "slug": event.get("slug")}
+            existing.extra_metadata = {"event_id": event_id, "slug": event.get("slug")}
             db.commit()
         else:
             # Add new
