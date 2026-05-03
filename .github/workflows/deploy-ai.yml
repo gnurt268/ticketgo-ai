@@ -1,0 +1,46 @@
+name: Deploy AI
+
+on:
+  push:
+    branches: [develop]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/gnurt268/ticketgo-ai:latest
+            ghcr.io/gnurt268/ticketgo-ai:${{ github.sha }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: deploy
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /home/deploy/ticketgo
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u gnurt268 --password-stdin
+            docker compose -f docker-compose.prod.yml pull ai
+            docker compose -f docker-compose.prod.yml up -d ai
+            sleep 10
+            docker compose -f docker-compose.prod.yml restart api
+            docker image prune -f
